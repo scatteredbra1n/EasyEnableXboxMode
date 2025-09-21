@@ -1,64 +1,69 @@
 @echo off
-setlocal EnableExtensions
+setlocal EnableExtensions EnableDelayedExpansion
 
-:: -------------------------
 :: Config
-:: -------------------------
-set "URL=https://github.com/thebookisclosed/ViVe/releases/download/v0.3.4/ViVeTool-v0.3.4-IntelAmd.zip"
-set "DOWNLOAD_DIR=C:\temp"
-set "ZIP_PATH=%DOWNLOAD_DIR%\ViVeTool.zip"
-set "EXTRACT_DIR=%DOWNLOAD_DIR%\ViVeToolExtract"
-set "SUCCESS_MSG=Successfully set feature configuration(s)"
 set "REG_KEY=HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\OEM"
 set "REG_VAL=DeviceForm"
-set "REG_DECIMAL=46"    :: 0x2e
-set "COUNTDOWN_SECONDS=10"
-set "TEMP_OUT=%DOWNLOAD_DIR%\vive_out.txt"
-set "LOG=%DOWNLOAD_DIR%\vivetool_run.log"
-:: -------------------------
+set "TARGET_DEC=46"    :: 0x2e
+set "TMP_OUT=%TEMP%\regq_%RANDOM%.tmp"
 
-echo Checking registry: %REG_KEY%\%REG_VAL% ...
+echo Checking %REG_KEY%\%REG_VAL% ...
 
-set "CURRENT_HEX="
-
-:: Does the value exist?
-reg query "%REG_KEY%" /v %REG_VAL% >nul 2>&1
+:: --- Elevation check (create/delete a temp value). Relaunch with Admin /K if needed.
+reg add "%REG_KEY%" /v __PermCheck /t REG_DWORD /d 0 /f >nul 2>&1
 if errorlevel 1 (
-    echo Value not found. Creating with %REG_DECIMAL% ...
-    reg add "%REG_KEY%" /v %REG_VAL% /t REG_DWORD /d %REG_DECIMAL% /f >nul
-    if errorlevel 1 (
-        echo ERROR: Failed to create value.
-        exit /b 1
-    )
-    echo Created %REG_VAL% = %REG_DECIMAL% (0x2e).
-    goto :done
+  echo Needs Administrator rights. Relaunching elevated...
+  powershell -NoProfile -Command "Start-Process 'cmd.exe' -ArgumentList '/k','\"\"\"%~f0\"\"\"' -Verb RunAs"
+  goto :end
+)
+reg delete "%REG_KEY%" /v __PermCheck /f >nul 2>&1
+
+:: --- Query the current value (write to a file; no pipes to avoid parser quirks)
+reg query "%REG_KEY%" /v %REG_VAL% > "%TMP_OUT%" 2>&1
+if errorlevel 1 (
+  echo %REG_VAL% not found. Creating with %TARGET_DEC% ...
+  reg add "%REG_KEY%" /v %REG_VAL% /t REG_DWORD /d %TARGET_DEC% /f >nul
+  if errorlevel 1 (
+    echo ERROR: Failed to create %REG_VAL%.
+    goto :show
+  )
+  goto :show
 )
 
-:: Parse current value (reg query output has: Name  Type  Data)
-for /f "tokens=3" %%A in ('reg query "%REG_KEY%" /v %REG_VAL% ^| findstr /i "%REG_VAL%"') do set "CURRENT_HEX=%%A"
+:: --- Parse the line that contains "DeviceForm"
+set "CURRENT_HEX="
+for /f "usebackq tokens=1,2,3,*" %%A in ("%TMP_OUT%") do (
+  if /i "%%A"=="%REG_VAL%" set "CURRENT_HEX=%%C"
+)
 
 if not defined CURRENT_HEX (
-    echo Could not parse existing value. Forcing update to %REG_DECIMAL% ...
-    reg add "%REG_KEY%" /v %REG_VAL% /t REG_DWORD /d %REG_DECIMAL% /f >nul
-    goto :done
+  echo Could not parse existing value. Forcing to %TARGET_DEC% ...
+  reg add "%REG_KEY%" /v %REG_VAL% /t REG_DWORD /d %TARGET_DEC% /f >nul
+  goto :show
 )
 
-:: Convert hex to decimal
+:: --- Convert hex (e.g., 0x0000002e) to decimal and compare
 set /a CURRENT_DEC=%CURRENT_HEX% 2>nul
-
-if "%CURRENT_DEC%"=="%REG_DECIMAL%" (
-    echo Value already set to %REG_DECIMAL% (hex %CURRENT_HEX%).
+if not "!CURRENT_DEC!"=="%TARGET_DEC%" (
+  echo Current is !CURRENT_DEC! (hex %CURRENT_HEX%). Updating to %TARGET_DEC% ...
+  reg add "%REG_KEY%" /v %REG_VAL% /t REG_DWORD /d %TARGET_DEC% /f >nul
+  if errorlevel 1 (
+    echo ERROR: Failed to update %REG_VAL%.
+    goto :show
+  )
 ) else (
-    echo Current value is %CURRENT_DEC% (hex %CURRENT_HEX%). Updating...
-    reg add "%REG_KEY%" /v %REG_VAL% /t REG_DWORD /d %REG_DECIMAL% /f >nul
-    if errorlevel 1 (
-        echo ERROR: Failed to update value.
-        exit /b 1
-    )
-    echo Updated to %REG_DECIMAL% (0x2e).
+  echo Value already correct.
 )
 
-:done
-echo Done.
-endlocal
+:show
+:: Re-query to display final hex value
+reg query "%REG_KEY%" /v %REG_VAL% | findstr /i "%REG_VAL%"
+goto :cleanup
+
+:cleanup
+if exist "%TMP_OUT%" del /f /q "%TMP_OUT%" >nul 2>&1
+
+:end
+echo.
 pause
+exit /b
