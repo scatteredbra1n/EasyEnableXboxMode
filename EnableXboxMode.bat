@@ -53,26 +53,40 @@ call :run_and_check "%VIVEEXE%" "/enable /id:50902630" || goto :fail
 echo Both ViVeTool commands succeeded.
 
 :: ============================
-:: REGISTRY SECTION (FIXED)
+:: REGISTRY SECTION (pure REG)
 :: ============================
-echo Checking registry value %REG_KEY%\%REG_VAL% ...
-reg query "%REG_KEY%" /v %REG_VAL% >nul 2>&1
+set "TEMP_REG=%DOWNLOAD_DIR%\reg_line.txt"
+
+echo Checking %REG_KEY%\%REG_VAL% ...
+
+reg query "%REG_KEY%" /v %REG_VAL% > "%TEMP_REG%" 2>&1
 if errorlevel 1 (
   echo Value not found. Creating as REG_DWORD %REG_DECIMAL% ...
   reg add "%REG_KEY%" /v %REG_VAL% /t REG_DWORD /d %REG_DECIMAL% /f >nul 2>&1 || goto :fail
   echo Registry value created.
 ) else (
-  :: Parse the existing DWORD (comes back as hex like 0x0000002e)
-  for /f "tokens=3" %%A in ('reg query "%REG_KEY%" /v %REG_VAL% ^| findstr /i "%REG_VAL%"') do set "CURRENT_HEX=%%A"
-  set "CURRENT_HEX=%CURRENT_HEX%"
-  :: Convert to decimal for comparison (set /a understands 0x... hex)
-  set /a CURRENT_DEC=%CURRENT_HEX% 2>nul
-  if not "%CURRENT_DEC%"=="%REG_DECIMAL%" (
-    echo Current is %CURRENT_DEC% (hex %CURRENT_HEX%). Updating to %REG_DECIMAL% ...
+  :: Grab the line with our value name into CURRENT_LINE
+  set "CURRENT_LINE="
+  for /f "usebackq tokens=* delims=" %%L in ("%TEMP_REG%") do (
+    echo %%L | findstr /i /r "^\s*%REG_VAL%\s" >nul && set "CURRENT_LINE=%%L"
+  )
+  del /f /q "%TEMP_REG%" >nul 2>&1
+
+  if not defined CURRENT_LINE (
+    echo Could not parse current value; updating to %REG_DECIMAL% ...
     reg add "%REG_KEY%" /v %REG_VAL% /t REG_DWORD /d %REG_DECIMAL% /f >nul 2>&1 || goto :fail
     echo Registry updated.
   ) else (
-    echo Registry already set to %REG_DECIMAL% (0x2e).
+    :: CURRENT_LINE looks like: "    DeviceForm    REG_DWORD    0x0000002e"
+    for /f "tokens=3" %%A in ("%CURRENT_LINE%") do set "CURRENT_HEX=%%A"
+    set /a CURRENT_DEC=%CURRENT_HEX% 2>nul
+    if "%CURRENT_DEC%"=="%REG_DECIMAL%" (
+      echo Registry already %REG_DECIMAL% (0x2e).
+    ) else (
+      echo Current is %CURRENT_DEC% (hex %CURRENT_HEX%). Updating to %REG_DECIMAL% ...
+      reg add "%REG_KEY%" /v %REG_VAL% /t REG_DWORD /d %REG_DECIMAL% /f >nul 2>&1 || goto :fail
+      echo Registry updated.
+    )
   )
 )
 
