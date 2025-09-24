@@ -4,6 +4,12 @@ This script will take you through the steps required to enable the Full Screen E
 
 Currently, at the time of this repo's creation, 25H2 is only available through the Windows Insider Program through the "Dev" channel.
 
+This script is me hacking together a batch script - which couldn't have been possible without some ChatGPT help.
+
+My scripting knowledge stems from shell scripts, so taking on the Windows world was not easy.
+
+That being said - I have used the script myself on my Lenovo Legion Go and it worked great. If there are any additions that would make this script even better, have at it! Submit a PR, and let's make this script even better if you find it useful!
+
 ## Steps to manually enable
 
 These are the full steps to install and enable the Full Screen Experience. The steps that are automated in this script start after the Windows 11 25H2 update is succesfully installed.
@@ -55,4 +61,5 @@ Also keep in mind that this is beta software and there will most likely be issue
 ## Credits
 
 [u/Gogsi123's Original Guide on Reddit](https://www.reddit.com/r/ROGAlly/comments/1niwsfi/guide_for_enabling_the_full_screen_experience_on/)
+
 [thebookisclosed/ViVe](https://github.com/thebookisclosed/ViVe/releases)
